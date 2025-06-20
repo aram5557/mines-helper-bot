@@ -28,7 +28,7 @@ def main():
     from dotenv import load_dotenv
     load_dotenv()
     
-    token = os.getenv("BOT_TOKEN")
+    token = os.getenv(7614772602:AAGH0sQk986fzzBaxLe9AXRUbOw6AlqaeFU)
     app = ApplicationBuilder().token(token).build()
     
     app.add_handler(CommandHandler("start", start))
