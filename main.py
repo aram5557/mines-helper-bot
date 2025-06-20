@@ -1,3 +1,4 @@
+print("=== Я запустился из bot.py ===")
 import os
 import json
 import statistics
