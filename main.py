@@ -1,134 +1,92 @@
-print("=== Я запустился из bot.py ===")
-import os
-import json
-import statistics
+import logging
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import statistics
 
-DATA_FILE = "data.json"
+# Настройка логов
+logging.basicConfig(level=logging.INFO)
 
-# --- Работа с историей
-def load_data():
-    return json.load(open(DATA_FILE)) if os.path.exists(DATA_FILE) else {}
+# Сохраняем историю множителей
+multipliers = []
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
-
-def get_user_data(user_id):
-    return load_data().get(str(user_id), [])
-
-def save_multiplier(user_id, value):
-    data = load_data()
-    uid = str(user_id)
-    data.setdefault(uid, []).append(value)
-    save_data(data)
-
-def clear_user_data(user_id):
-    data = load_data()
-    data[str(user_id)] = []
-    save_data(data)
-
-# --- Логика предсказания
-def analyze_trend(values):
-    last5 = values[-5:] if len(values) >= 5 else values
-    lows = sum(1 for v in last5 if v < 1.5)
-    highs = sum(1 for v in last5 if v >= 2)
-    if lows >= 4:
-        return "📉 Много низких значений.\n🔮 Возможен x2–x5"
-    elif highs >= 4:
-        return "📈 Были высокие множители.\n🔮 Возможен x1.05–x1.5"
-    return "🤔 Тренд неясен.\n🔮 Возможен x1.5–x3.0"
-
-# --- Команды
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        ["📥 Добавить /add", "📊 Статистика /stats"],
-        ["🔮 Прогноз /predict", "🧹 Очистить /clear"],
-        ["ℹ️ Помощь /help"]
-    ]
-    markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("👋 Привет! Я LuckyJet аналитик. Выбирай команду снизу ⬇️", reply_markup=markup)
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [['/predict'], ['/stats'], ['/help']]
     await update.message.reply_text(
-        "🛠 Команды:\n"
-        "/add 1.25 2.5 — добавить множители\n"
-        "/round 1.8 — добавить + предсказание\n"
-        "/predict — предсказать следующий\n"
-        "/stats — показать статистику\n"
-        "/clear — очистить историю\n"
-        "/help — помощь\n"
+        "👋 Привет! Я анализатор LuckyJet. Введи множители через запятую, например:\n1.23, 2.34, 3.01",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
 
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    values = []
-    for val in context.args:
-        try:
-            num = float(val)
-            save_multiplier(user_id, num)
-            values.append(num)
-        except:
-            continue
-    if values:
-        await update.message.reply_text(f"✅ Добавлены: {', '.join(map(str, values))}")
-    else:
-        await update.message.reply_text("⚠️ Используй: /add 1.5 2.33")
+# Команда /help
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("""
+📋 Доступные команды:
+/start — запуск бота и меню
+/stats — показать статистику по текущим множителям
+/predict — предсказать следующий раунд на основе истории
+/help — список команд
+""")
 
-async def round_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        return await update.message.reply_text("⚠️ Пример: /round 2.33")
-    try:
-        val = float(context.args[0])
-        save_multiplier(user_id, val)
-        prediction = analyze_trend(get_user_data(user_id))
-        await update.message.reply_text(f"➕ Добавлен: {val}\n{prediction}")
-    except:
-        await update.message.reply_text("❌ Неверный формат.")
-
-async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    values = get_user_data(user_id)
-    if not values:
-        return await update.message.reply_text("⚠️ Сначала добавь историю через /add.")
-    trend = analyze_trend(values)
-    await update.message.reply_text(f"🔮 Прогноз:\n{trend}")
-
+# Команда /stats
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    values = get_user_data(user_id)
-    if not values:
-        return await update.message.reply_text("⚠️ У тебя ещё нет данных.")
-    msg = (
-        f"📊 Всего: {len(values)} значений\n"
-        f"Среднее: {round(statistics.mean(values), 2)}\n"
-        f"Медиана: {round(statistics.median(values), 2)}\n"
-        f"Мин: {min(values)} | Макс: {max(values)}\n"
-        f"Последний x>2.0: {next((v for v in reversed(values) if v > 2.0), '—')}"
+    if not multipliers:
+        await update.message.reply_text("Нет данных. Введите множители.")
+        return
+    avg = round(statistics.mean(multipliers), 2)
+    med = round(statistics.median(multipliers), 2)
+    maxx = max(multipliers)
+    minn = min(multipliers)
+    last_big = next((x for x in reversed(multipliers) if x > 5), "не найден")
+    await update.message.reply_text(
+        f"📊 Статистика:\n"
+        f"Среднее: {avg}\n"
+        f"Медиана: {med}\n"
+        f"Макс: {maxx}\n"
+        f"Мин: {minn}\n"
+        f"Последний x5+: {last_big}"
     )
-    await update.message.reply_text(msg)
 
-async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_data(update.effective_user.id)
-    await update.message.reply_text("🧹 История очищена!")
+# Команда /predict
+async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not multipliers or len(multipliers) < 5:
+        await update.message.reply_text("Недостаточно данных для прогноза.")
+        return
+    recent = multipliers[-5:]
+    low = all(x < 2 for x in recent)
+    if low:
+        await update.message.reply_text("Последние 5 раундов были низкими. Возможно, скоро x5+!")
+    else:
+        await update.message.reply_text("Скорее всего, следующий множитель будет средним.")
+    forecast = round(statistics.mean(recent) * 1.3, 2)
+    await update.message.reply_text(f"📈 Прогнозный множитель: ~ {forecast}x")
 
-# --- Запуск
+# Обработка сообщений с множителями
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    try:
+        values = [float(x.strip()) for x in text.split(",")]
+        multipliers.extend(values)
+        await update.message.reply_text(f"✅ Добавлено: {values}")
+    except:
+        await update.message.reply_text("Ошибка: введите множители через запятую, например: 1.2, 2.3")
+
+# Запуск бота
 async def main():
-    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    from os import getenv
+    TOKEN = getenv("BOT_TOKEN")  # Убедись, что переменная окружения задана
     if not TOKEN:
-        raise Exception("❌ Переменная TELEGRAM_BOT_TOKEN не установлена")
+        print("❌ Переменная окружения BOT_TOKEN не задана!")
+        return
 
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("round", round_cmd))
-    app.add_handler(CommandHandler("predict", predict))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("clear", clear))
 
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("predict", predict))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("✅ Бот запущен!")
     await app.run_polling()
 
 if __name__ == "__main__":
