@@ -5,13 +5,10 @@ import logging
 from telegram import Update, InputFile, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import matplotlib.pyplot as plt
-from PIL import Image
-import pytesseract
 import pandas as pd
 
 DATA_FILE = "data.json"
 
-# --- Утилиты сохранения ---
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -50,7 +47,6 @@ def analyze_trend(values):
     else:
         return "🤔 Тренд неясен.\n🔮 Прогноз: 1.50–2.50x"
 
-# --- Обработчики команд ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["📥 Добавить множитель", "📊 Статистика"],
@@ -73,7 +69,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/plot — график истории\n"
         "/report — Excel-отчёт\n"
         "/clear — очистить свою историю\n\n"
-        "📷 Можно также отправить скрин с множителями — бот сам распознает!"
+        "📷 Отправка скриншотов временно недоступна."
     )
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,23 +159,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     df.to_excel(filename, index=False)
     await update.message.reply_document(document=InputFile(filename))
 
-async def ocr_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    await file.download_to_drive("ocr.jpg")
-    image = Image.open("ocr.jpg")
-    text = pytesseract.image_to_string(image)
-    numbers = [float(x) for x in text.replace(",", ".").split() if x.replace(".", "", 1).isdigit()]
-    if not numbers:
-        await update.message.reply_text("⚠️ Не удалось распознать множители.")
-        return
-    for n in numbers:
-        save_multiplier(user_id, n)
-    trend = analyze_trend(get_user_data(user_id))
-    await update.message.reply_text(f"📸 Распознано: {', '.join(map(str, numbers))}\n{trend}")
-
-# --- Основной запуск ---
 async def main():
     import asyncio
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -196,13 +175,7 @@ async def main():
     app.add_handler(CommandHandler("plot", plot))
     app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("clear", clear))
-    app.add_handler(MessageHandler(filters.PHOTO, ocr_handler))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📚 Помощь"), help_command))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📊 Статистика"), stats))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🔮 Прогноз"), predict))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📈 График"), plot))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("📄 Отчёт"), report))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex("🧹 Очистить историю"), clear))
+    # Убираем обработчики фото (OCR)
 
     await app.run_polling()
 
