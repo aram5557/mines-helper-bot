@@ -3,9 +3,7 @@ import json
 import statistics
 import logging
 from telegram import Update, InputFile, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-import matplotlib.pyplot as plt
-import pandas as pd
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 DATA_FILE = "data.json"
 
@@ -132,38 +130,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg)
 
-async def plot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    values = get_user_data(user_id)
-    if not values:
-        await update.message.reply_text("⚠️ Нет данных.")
-        return
-    plt.figure()
-    plt.plot(values, marker='o')
-    plt.title("История множителей")
-    plt.xlabel("Раунд")
-    plt.ylabel("Множитель")
-    plt.grid(True)
-    plt.savefig("plot.png")
-    plt.close()
-    await update.message.reply_photo(photo=InputFile("plot.png"))
-
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    values = get_user_data(user_id)
-    if not values:
-        await update.message.reply_text("⚠️ Нет данных.")
-        return
-    df = pd.DataFrame(values, columns=["Multiplier"])
-    filename = f"report_{user_id}.xlsx"
-    df.to_excel(filename, index=False)
-    await update.message.reply_document(document=InputFile(filename))
-
 async def main():
-    import asyncio
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from telegram.ext import CommandHandler, MessageHandler, filters
+
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
-        raise ValueError("❌ Переменная TELEGRAM_BOT_TOKEN не установлена!")
+        raise ValueError("❌ TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -172,10 +147,6 @@ async def main():
     app.add_handler(CommandHandler("round", round_command))
     app.add_handler(CommandHandler("predict", predict))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("plot", plot))
-    app.add_handler(CommandHandler("report", report))
-    app.add_handler(CommandHandler("clear", clear))
-    # Убираем обработчики фото (OCR)
 
     await app.run_polling()
 
