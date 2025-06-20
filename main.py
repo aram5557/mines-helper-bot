@@ -191,3 +191,28 @@ if __name__ == "__main__":
 
     print("Бот запущен...")
     app.run_polling()
+import asyncio
+from aiohttp import web
+
+async def handle(request):
+    return web.Response(text="Bot is running")
+
+app_http = web.Application()
+app_http.add_routes([web.get('/', handle)])
+
+async def run_webserver():
+    runner = web.AppRunner(app_http)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8000)))
+    await site.start()
+    print("HTTP server started")
+
+async def main():
+    # Запускаем вебсервер параллельно с ботом
+    await run_webserver()
+    # Запускаем бота (app.run_polling() — в синхронном режиме, можно обернуть или перенести в asyncio)
+    await app.run_polling()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
